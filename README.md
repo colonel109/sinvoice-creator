@@ -1,0 +1,1 @@
+Dự án này đọc các file kết quả (dạng *.xlsm) của bộ phận Ecom và ghi lại vào template hoá đơn điện tử

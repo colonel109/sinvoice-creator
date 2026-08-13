@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+ecom_processed_data/
+invoice_template/
