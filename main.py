@@ -1,10 +1,11 @@
 from pathlib import Path
 import pandas as pd
-from pandas import DataFrame
+import duckdb
 
 
 def process_result_data(df: pd.DataFrame):
     df = df.iloc[9:, :19]
+    
     col_mapping = {
         "stt": "int64",
         "order_id": "str",
@@ -28,7 +29,6 @@ def process_result_data(df: pd.DataFrame):
     }
 
     df.columns = [col for col in col_mapping.keys()]
-    df.to_excel("result.xlsx")
 
     for col, dtype in col_mapping.items():
         if dtype == "float64":
@@ -40,15 +40,15 @@ def process_result_data(df: pd.DataFrame):
     for col in clear_cols:
         df[col] = df[col].str.strip()
 
-    df = df.iloc[:, :-3]
     df = df.ffill()
     return df
 
-def process_source_data(df:DataFrame):
-    df = df.loc[:, ["Order ID", "SKU Seller Discount"]]
+def process_source_data(df: pd.DataFrame):
+    df = df.loc[:, ["Order ID", "SKU ID", "SKU Seller Discount"]]
 
     col_mapping = {
             "order_id": "str",
+            "sku_id": "str",
             "sku_seller_discount": "float64"
     }
 
@@ -131,10 +131,32 @@ def check_file_num(data_folder: Path):
 
     return has_error
 
-
+def sql_process(result_data, source_data, product_data):
+    result_data = result_data
+    source_data = source_data
+    product_data = product_data
+    
+    sql_query = """
+        WITH temp_1 AS ( -- thêm các sequence vào dữ liệu kết quả
+            SELECT 
+                row_number() OVER () AS raw_seq, -- Thứ tự gốc của các dòng trong file
+                row_number() OVER (PARTITION BY order_id ORDER BY stt) AS item_group,
+                stt,
+                order_id,
+                sku_id,
+                item_code,
+                item_name,
+                item_price
+            FROM result_data
+            ORDER BY raw_seq
+        )
+        SELECT * FROM temp_1
+        """
+    result = duckdb.query(sql_query).df()
+    return result 
+   
 BASE_PATH = Path().cwd()
 DATA_FOLDER_PATH = BASE_PATH / "data"
-
 
 def main():
     check_result = check_file_num(DATA_FOLDER_PATH)
@@ -144,7 +166,9 @@ def main():
     result_data, source_data = process_ecom_data(
         ecom_folder = DATA_FOLDER_PATH / "ecom_processed_data"
     )
-
+    
     product_data = process_product_data(DATA_FOLDER_PATH / "product_data" / "Thông tin sản phẩm.xlsx")
+    result = sql_process(result_data, source_data, product_data)
+    result.to_excel("result.xlsx")
 
 main()
