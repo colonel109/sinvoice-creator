@@ -89,8 +89,9 @@ def process_product_data(file_path: Path):
     df = pd.read_excel(file_path)
 
     col_mapping = {
-        "product_code": "str",
-        "product_name": "str",
+        "item_code": "str",
+        "item_name": "str",
+        "item_unit": "str",
         "tax_percent": "float64"
     }
 
@@ -141,18 +142,80 @@ def sql_process(result_data, source_data, product_data):
             SELECT 
                 row_number() OVER () AS raw_seq, -- Thứ tự gốc của các dòng trong file
                 row_number() OVER (PARTITION BY order_id ORDER BY stt) AS item_group,
-                stt,
-                order_id,
-                sku_id,
-                item_code,
-                item_name,
-                item_price
-            FROM result_data
+                rd.stt,
+                rd.order_id,
+                rd.sku_id,
+                rd.item_code,
+                CASE
+                    WHEN 
+                        pd.item_name IS NOT NULL AND rd.item_price = 0 THEN pd.item_name || '(Hàng khuyến mãi không thu tiền)'
+                        ELSE pd.item_name
+                END AS item_name,
+                pd.item_name,
+                rd.item_price,
+                pd.item_unit,
+                pd.tax_percent,
+                rd.item_quantity,
+                ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) AS item_price_novat, -- Tính toán tiền chưa vat, làm tron 3 số thập phân
+                ROUND (ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) * item_quantity) AS total_value_novat, -- Thành tiền chưa vat
+                ROUND (ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) * item_quantity * pd.tax_percent) AS tax_amount, -- Tiền thuế 
+                CAST(tax_percent * 100 AS INTEGER) AS vat_percent
+            FROM result_data rd
+            LEFT JOIN product_data pd ON rd.item_code = pd.item_code
             ORDER BY raw_seq
+        ),
+        temp_2 AS (
+            SELECT
+                item_group,
+                stt,
+                NULL AS item_code,
+                'Mã giảm giá và shop voucher' AS item_name,
+                'Lần' AS item_unit,
+                NULL AS item_quantity,
+                tax_amount AS item_price_novat,
+                vat_percent,
+                tax_amount,
+                tax_amount AS total_value_novat,
+            FROM (
+            SELECT
+                t1.item_group,
+                t1.stt,
+                vat_percent,
+                sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) AS discount_per_item,
+                sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) * t1.tax_percent AS tax_amount
+            FROM temp_1 t1
+            LEFT JOIN source_data sd ON t1.order_id = sd.order_id
+            AND t1.sku_id = sd.sku_id) AS sub_query
         )
-        SELECT * FROM temp_1
+        SELECT 
+            item_group,
+            stt,
+            item_code,
+            item_name,
+            item_unit,
+            item_quantity,
+            item_price_novat,
+            total_value_novat,
+            vat_percent,
+            tax_amount
+        FROM temp_1 t1
+        UNION ALL
+        SELECT
+            item_group,
+            stt,
+            item_code,
+            item_name,
+            item_unit,
+            item_quantity,
+            item_price_novat,
+            total_value_novat,
+            vat_percent,
+            tax_amount
+        FROM temp_2
+        ORDER BY stt, item_group
         """
     result = duckdb.query(sql_query).df()
+    print(result)
     return result 
    
 BASE_PATH = Path().cwd()
@@ -169,6 +232,6 @@ def main():
     
     product_data = process_product_data(DATA_FOLDER_PATH / "product_data" / "Thông tin sản phẩm.xlsx")
     result = sql_process(result_data, source_data, product_data)
-    result.to_excel("result.xlsx")
+    result.to_excel("result.xlsx", index = False)
 
 main()
