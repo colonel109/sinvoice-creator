@@ -193,8 +193,7 @@ def sql_process(result_data, source_data, product_data):
             GROUP BY
                 item_group,
                 order_group,
-                tax_percentage,
-                tax_amount
+                tax_percentage
             HAVING
                 tax_amount <> 0 AND total_value_novat <> 0 AND item_price_novat <> 0
         )
