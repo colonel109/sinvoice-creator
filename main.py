@@ -173,10 +173,10 @@ def sql_process(result_data, source_data, product_data):
                 'Mã giảm giá và shop voucher' AS item_name,
                 'Lần' AS item_unit,
                 NULL AS item_quantity,
-                SUM(sku_seller_discount) AS item_price_novat,
+                ROUND(SUM(discount_per_item), 3) AS item_price_novat, -- Không cần làm tròn giá sản phẩm
                 tax_percentage,
-                SUM(tax_amount) AS tax_amount,
-                SUM(sku_seller_discount) AS total_value_novat,
+                ROUND(SUM(tax_amount)) AS tax_amount, -- Bắt buộc làm tròn
+                ROUND(SUM(discount_per_item)) AS total_value_novat, -- Bắt buộc làm tròn
             FROM (
             -- Phân chia tiền voucher vào các mã sản phẩm theo order_id, sku_id trước sau đó gom lại theo % vat
             SELECT
@@ -184,8 +184,9 @@ def sql_process(result_data, source_data, product_data):
                 t1.order_group,
                 tax_percentage,
                 sku_seller_discount,
-                sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) AS discount_per_item,
-                sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) * t1.tax_ratio AS tax_amount
+                -- Phân bổ tiền voucher vào các sản phẩm trong đơn order_id theo từng sku sau đó tính toán tiền trước thuế (Voucher trong file gốc đã bao gồm tiền thuế)
+                (sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id)) / (1 + t1.tax_ratio) AS discount_per_item,
+                (sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id)) / (1 + t1.tax_ratio) * t1.tax_ratio AS tax_amount
             FROM temp_1 t1
             LEFT JOIN source_data sd ON t1.order_id = sd.order_id
             AND t1.sku_id = sd.sku_id) AS sub_query
@@ -251,7 +252,6 @@ def sql_process(result_data, source_data, product_data):
         ) AS temp
         """
     result = duckdb.query(sql_query).df()
-    print(result)
     return result 
 
 def excel_writer(target_folder_path: Path, data: pd.DataFrame):
