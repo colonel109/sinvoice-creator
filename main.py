@@ -111,26 +111,31 @@ def check_file_num(data_folder: Path):
     - Thư mục invoice_template chỉ chứa đúng 1 file hoá đơn
     - Thư mục product_data chỉ chứa đúng 1 file thông tin sản phẩm
     """
+    print(f"Đang kiểm tra các thư mục trong đường dẫn {data_folder}")
     has_error = False
 
     # Kiểm tra thư mục ecom_processed_data
     ecom_files = [file for file in Path(data_folder / "ecom_processed_data").glob("*.xlsm")]
     if len(ecom_files) == 0:
-        print("Không có file chứa dữ liệu ecom nào, vui lòng thêm vào")
+        has_error = True
+        print(f"Không có file chứa dữ liệu ecom trong thư mục {data_folder/ "ecom_process_data"}")
 
     invoice_files = [file for file in Path(data_folder / "invoice_template").glob("*.xls")]
     if len(invoice_files) == 0:
+        has_error = True
         print(f"Không có file hoá đơn nào trong thư mục {data_folder / "invoice_template"}")
     elif len(invoice_files) > 1:
+        has_error = True
         print(f"Có nhiều hơn 1 file hoá đơn, vui lòng chỉ sử dụng 1 file")
 
     product_files = [file for file in Path(data_folder / "product_data").glob("*.xlsx")]
     if len(product_files) == 0:
+        has_error = True
         print(f"Không có file dữ liệu sản phẩm nào nằm trong thư mục {Path(data_folder / "product_data")}")
 
     if not has_error:
-        print("Không có lỗi, tiếp tục đọc file")
-
+        print("Không phát hiện lỗi, tiến hành đọc file")
+   
     return has_error
 
 def sql_process(result_data, source_data, product_data):
@@ -258,10 +263,11 @@ def excel_writer(target_folder_path: Path, data: pd.DataFrame):
     files_check = [f for f in folder_path.glob("*.xls")] 
     file_num = len(files_check)
     if not file_num == 1:
-        print(f"Lỗi: Phát hiện {file_num} trong thư mục {folder_path}")
+        print(f"Lỗi: Phát hiện {file_num} file trong thư mục {folder_path}")
         return
 
     target_template_file = str(files_check[0].resolve())
+    print(f"Đang mở file {target_template_file}")
 
     # Ghi dữ liệu
     excel = win32.Dispatch("Excel.Application")
@@ -299,7 +305,9 @@ def excel_writer(target_folder_path: Path, data: pd.DataFrame):
         ws.Cells(10000, 40)
     ).ClearContents()
 
+    print("Chuẩn bị ghi dữ liệu:")
     for col, col_idx in COLUMN_MAP.items():
+        print(f"Đang ghi dữ liệu cột {col}")
         data_col = data[col]
         data_to_write = [[None if pd.isna(val) else val] for val in data_col.tolist()]
 
@@ -307,14 +315,31 @@ def excel_writer(target_folder_path: Path, data: pd.DataFrame):
             ws.Cells(start_row, col_idx), ws.Cells(end_row, col_idx)
         ).Value = data_to_write
     
+    print("Hoàn tất ghi và lưu dữ liệu")
     wb.Save()
     del excel
 
+def path_checker(paths: list):
+    paths_to_check = paths
+    has_error = False
+    for p in paths_to_check:
+        if not p.exists():
+            print(f"Thiếu đường dẫn {p}, đang tạo...")
+            p.mkdir(parents=True, exist_ok=True)
+    return has_error
 
+          
 BASE_PATH = Path().cwd()
 DATA_FOLDER_PATH = BASE_PATH / "data"
+ECOM_DATA = DATA_FOLDER_PATH / "ecom_processed_data"
+INVOICE_TEMPLATE = DATA_FOLDER_PATH / "invoice_template"
+PRODUCT_DATA = DATA_FOLDER_PATH / "product_data"
+
 
 def main():
+    path_to_check = [ECOM_DATA, INVOICE_TEMPLATE, PRODUCT_DATA]
+    path_checker(path_to_check)
+
     check_result = check_file_num(DATA_FOLDER_PATH)
     if check_result:
         return
@@ -325,6 +350,12 @@ def main():
     
     product_data = process_product_data(DATA_FOLDER_PATH / "product_data" / "Thông tin sản phẩm.xlsx")
     result_data = sql_process(result_data, source_data, product_data)
+
+    if result_data.empty:
+        print("Không có dữ liệu kết quả")
+        return
+
     excel_writer(DATA_FOLDER_PATH / "invoice_template", result_data)
 
 main()
+input("Nhấn Enter để thoát...")
