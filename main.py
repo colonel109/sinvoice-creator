@@ -7,7 +7,7 @@ def process_result_data(df: pd.DataFrame):
     df = df.iloc[9:, :19]
     
     col_mapping = {
-        "stt": "int64",
+        "order_group": "int64",
         "order_id": "str",
         "sku_id": "str",
         "product_name": "str",
@@ -141,8 +141,8 @@ def sql_process(result_data, source_data, product_data):
         WITH temp_1 AS ( -- thêm các sequence vào dữ liệu kết quả
             SELECT 
                 row_number() OVER () AS raw_seq, -- Thứ tự gốc của các dòng trong file
-                row_number() OVER (PARTITION BY order_id ORDER BY stt) AS item_group,
-                rd.stt,
+                row_number() OVER (PARTITION BY order_id ORDER BY order_group) AS item_group,
+                rd.order_group,
                 rd.order_id,
                 rd.sku_id,
                 rd.item_code,
@@ -156,7 +156,7 @@ def sql_process(result_data, source_data, product_data):
                 pd.item_unit,
                 pd.tax_percent,
                 rd.item_quantity,
-                ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) AS item_price_novat, -- Tính toán tiền chưa vat, làm tron 3 số thập phân
+                ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) AS item_price_novat, -- Tính toán tiền chưa vat, làm tròn 3 số thập phân
                 ROUND (ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) * item_quantity) AS total_value_novat, -- Thành tiền chưa vat
                 ROUND (ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) * item_quantity * pd.tax_percent) AS tax_amount, -- Tiền thuế 
                 CAST(tax_percent * 100 AS INTEGER) AS vat_percent
@@ -167,20 +167,22 @@ def sql_process(result_data, source_data, product_data):
         temp_2 AS (
             SELECT
                 item_group,
-                stt,
+                order_group,
                 NULL AS item_code,
                 'Mã giảm giá và shop voucher' AS item_name,
                 'Lần' AS item_unit,
                 NULL AS item_quantity,
-                tax_amount AS item_price_novat,
+                SUM(sku_seller_discount) AS item_price_novat,
                 vat_percent,
                 SUM(tax_amount) AS tax_amount,
-                SUM(tax_amount) AS total_value_novat,
+                SUM(sku_seller_discount) AS total_value_novat,
             FROM (
+            -- Phân chia tiền voucher vào các mã sản phẩm theo order_id, sku_id trước sau đó gom lại theo % vat
             SELECT
-                t1.item_group,
-                t1.stt,
+                NULL AS item_group,
+                t1.order_group,
                 vat_percent,
+                sku_seller_discount,
                 sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) AS discount_per_item,
                 sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) * t1.tax_percent AS tax_amount
             FROM temp_1 t1
@@ -188,13 +190,15 @@ def sql_process(result_data, source_data, product_data):
             AND t1.sku_id = sd.sku_id) AS sub_query
             GROUP BY
                 item_group,
-                stt,
+                order_group,
                 vat_percent,
                 tax_amount
+            HAVING
+                tax_amount <> 0 AND total_value_novat <> 0 AND item_price_novat <> 0
         )
         SELECT 
             item_group,
-            stt,
+            order_group,
             item_code,
             item_name,
             item_unit,
@@ -207,7 +211,7 @@ def sql_process(result_data, source_data, product_data):
         UNION ALL
         SELECT
             item_group,
-            stt,
+            order_group,
             item_code,
             item_name,
             item_unit,
@@ -217,12 +221,13 @@ def sql_process(result_data, source_data, product_data):
             vat_percent,
             tax_amount
         FROM temp_2
-        ORDER BY stt, item_group
+        ORDER BY order_group, item_group
         """
     result = duckdb.query(sql_query).df()
     print(result)
     return result 
-   
+
+
 BASE_PATH = Path().cwd()
 DATA_FOLDER_PATH = BASE_PATH / "data"
 
