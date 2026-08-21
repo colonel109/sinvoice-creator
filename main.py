@@ -42,6 +42,7 @@ def process_result_data(df: pd.DataFrame):
         df[col] = df[col].str.strip()
 
     df = df.ffill()
+    print(df)
     return df
 
 def process_source_data(df: pd.DataFrame):
@@ -139,6 +140,7 @@ def check_file_num(data_folder: Path):
     return has_error
 
 def check_missing_product(base_path, product_data, result_data):
+    has_error = False
     product_data = product_data
     result_data = result_data
     sql_query = """
@@ -154,18 +156,20 @@ def check_missing_product(base_path, product_data, result_data):
         FROM result_data
     )
     SELECT 
-    item_code AS missing_item_code,
-    item_name AS missing_item_name
-    FROM product p 
-    LEFT JOIN result r USING (item_code)
-    WHERE r.item_code IS NULL
+    r.item_code,
+    r.item_name
+    FROM result r 
+    LEFT JOIN product p ON r.item_code = p.item_code
+    WHERE p.item_code IS NULL AND r.item_code IS NOT NULL
     """
-    df = duckdb.query(sql_query).to_df()
-    if not df.empty:
-        print("Không tìm thấy sản phẩm thiếu")
-        return
+    df = duckdb.query(sql_query).df()
+    print(df)
+    if not len(df) == 0:
+        print(f"Có {len(df)} sản phẩm thiếu")
+        return has_error
 
     df.to_excel(base_path / "Sản phẩm thiếu.xlsx")
+    return has_error
 
 def sql_process(result_data, source_data, product_data):
     result_data = result_data
@@ -380,7 +384,9 @@ def main():
     product_data = process_product_data(DATA_FOLDER_PATH / "product_data" / "Thông tin sản phẩm.xlsx")
     result_data = sql_process(result_data, source_data, product_data)
     
-    check_missing_product(BASE_PATH, product_data, result_data)
+    missing_product = check_missing_product(BASE_PATH, product_data, result_data)
+    if missing_product:
+       return 
 
     if result_data.empty:
         print("Không có dữ liệu kết quả")
