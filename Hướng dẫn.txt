@@ -1,0 +1,42 @@
+1. Cấu trúc thư mục bắt buộc
+Tại thư mục chứa file chạy script, bạn cần tạo một thư mục tên là data. Bên trong thư mục data, tạo tiếp 3 thư mục con với tên chính xác như sau:
+
+data/ecom_processed_data/: Nơi chứa các file dữ liệu từ các sàn thương mại điện tử.
+data/invoice_template/: Nơi chứa file mẫu hóa đơn để đổ dữ liệu vào.
+data/product_data/: Nơi chứa file thông tin sản phẩm.
+
+2. Yêu cầu chi tiết cho từng loại file
+A. Thư mục ecom_processed_data
+
+Loại file: Chỉ đặt các file có đuôi .xlsm.
+
+Yêu cầu: Mỗi file phải chứa đủ 2 sheet có tên: NGUON và GHEPSP.
+
+B. Thư mục invoice_template
+
+Loại file: Chỉ đặt duy nhất 01 file mẫu hóa đơn có đuôi .xls.
+
+Lưu ý: Nếu có nhiều hơn 1 file hoặc file không đúng đuôi .xls, chương trình sẽ báo lỗi.
+
+C. Thư mục product_data
+
+Tên file: Phải đặt tên chính xác là: Thông tin sản phẩm.xlsx.
+
+Cấu trúc cột: File này cần chứa các cột sau:
+
+item_code
+
+item_name
+
+item_unit
+
+tax_ratio (tỷ lệ thuế)
+
+3. Quy trình thực hiện nhanh
+Bước 1: Tạo thư mục data cùng cấp với file script.
+
+Bước 2: Tạo 3 thư mục con: ecom_processed_data, invoice_template, product_data bên trong thư mục data.
+
+Bước 3: Sao chép các file dữ liệu vào đúng thư mục tương ứng.
+
+Bước 4: Chạy script. Công cụ sẽ tự động kiểm tra và xử lý dữ liệu. Nếu có lỗi (như thiếu file hoặc sai định dạng), chương trình sẽ hiển thị thông báo cụ thể ngay trên màn hình để bạn điều chỉnh.
