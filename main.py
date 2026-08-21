@@ -138,6 +138,35 @@ def check_file_num(data_folder: Path):
    
     return has_error
 
+def check_missing_product(base_path, product_data, result_data):
+    product_data = product_data
+    result_data = result_data
+    sql_query = """
+    WITH product AS (
+        SELECT DISTINCT
+        item_code
+        FROM product_data
+    ),
+    result AS (
+        SELECT DISTINCT
+        item_code,
+        item_name
+        FROM result_data
+    )
+    SELECT 
+    item_code AS missing_item_code,
+    item_name AS missing_item_name
+    FROM product p 
+    LEFT JOIN result r USING (item_code)
+    WHERE r.item_code IS NULL
+    """
+    df = duckdb.query(sql_query).to_df()
+    if not df.empty:
+        print("Không tìm thấy sản phẩm thiếu")
+        return
+
+    df.to_excel(base_path / "Sản phẩm thiếu.xlsx")
+
 def sql_process(result_data, source_data, product_data):
     result_data = result_data
     source_data = source_data
@@ -350,6 +379,8 @@ def main():
     
     product_data = process_product_data(DATA_FOLDER_PATH / "product_data" / "Thông tin sản phẩm.xlsx")
     result_data = sql_process(result_data, source_data, product_data)
+    
+    check_missing_product(BASE_PATH, product_data, result_data)
 
     if result_data.empty:
         print("Không có dữ liệu kết quả")
