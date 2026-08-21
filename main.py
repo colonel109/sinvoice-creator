@@ -1,6 +1,7 @@
 from pathlib import Path
 import pandas as pd
 import duckdb
+import win32com.client as win32
 
 
 def process_result_data(df: pd.DataFrame):
@@ -92,7 +93,7 @@ def process_product_data(file_path: Path):
         "item_code": "str",
         "item_name": "str",
         "item_unit": "str",
-        "tax_percent": "float64"
+        "tax_ratio": "float64"
     }
 
     for col, dtype in col_mapping.items():
@@ -154,12 +155,12 @@ def sql_process(result_data, source_data, product_data):
                 pd.item_name,
                 rd.item_price,
                 pd.item_unit,
-                pd.tax_percent,
+                pd.tax_ratio,
                 rd.item_quantity,
-                ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) AS item_price_novat, -- Tính toán tiền chưa vat, làm tròn 3 số thập phân
-                ROUND (ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) * item_quantity) AS total_value_novat, -- Thành tiền chưa vat
-                ROUND (ROUND (rd.item_price / (1 + COALESCE(pd.tax_percent, 0)), 3) * item_quantity * pd.tax_percent) AS tax_amount, -- Tiền thuế 
-                CAST(tax_percent * 100 AS INTEGER) AS vat_percent
+                ROUND (rd.item_price / (1 + COALESCE(pd.tax_ratio, 0)), 3) AS item_price_novat, -- Tính toán tiền chưa vat, làm tròn 3 số thập phân
+                ROUND (ROUND (rd.item_price / (1 + COALESCE(pd.tax_ratio, 0)), 3) * item_quantity) AS total_value_novat, -- Thành tiền chưa vat
+                ROUND (ROUND (rd.item_price / (1 + COALESCE(pd.tax_ratio, 0)), 3) * item_quantity * pd.tax_ratio) AS tax_amount, -- Tiền thuế 
+                CAST(tax_ratio * 100 AS INTEGER) AS tax_percentage
             FROM result_data rd
             LEFT JOIN product_data pd ON rd.item_code = pd.item_code
             ORDER BY raw_seq
@@ -173,7 +174,7 @@ def sql_process(result_data, source_data, product_data):
                 'Lần' AS item_unit,
                 NULL AS item_quantity,
                 SUM(sku_seller_discount) AS item_price_novat,
-                vat_percent,
+                tax_percentage,
                 SUM(tax_amount) AS tax_amount,
                 SUM(sku_seller_discount) AS total_value_novat,
             FROM (
@@ -181,22 +182,45 @@ def sql_process(result_data, source_data, product_data):
             SELECT
                 NULL AS item_group,
                 t1.order_group,
-                vat_percent,
+                tax_percentage,
                 sku_seller_discount,
                 sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) AS discount_per_item,
-                sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) * t1.tax_percent AS tax_amount
+                sku_seller_discount / COUNT(*) OVER (PARTITION BY t1.order_id, t1.sku_id) * t1.tax_ratio AS tax_amount
             FROM temp_1 t1
             LEFT JOIN source_data sd ON t1.order_id = sd.order_id
             AND t1.sku_id = sd.sku_id) AS sub_query
             GROUP BY
                 item_group,
                 order_group,
-                vat_percent,
+                tax_percentage,
                 tax_amount
             HAVING
                 tax_amount <> 0 AND total_value_novat <> 0 AND item_price_novat <> 0
         )
-        SELECT 
+        SELECT
+            item_group,
+            order_group,
+            1 AS receive_receipt,
+            '11204625' AS buyer_code,
+            'Bán cho người tiêu dùng' AS buyer_legal_name,
+            'TM/CK' AS pay_method,
+            2 AS pay_status,
+            'VND' AS currency_code,
+            CASE
+                WHEN item_price_novat = 0 AND item_code IS NOT NULL THEN 5
+                WHEN item_code IS NOT NULL THEN 1
+                ELSE 3
+            END AS selection,
+            item_code,
+            item_name,
+            item_unit,
+            item_quantity,
+            item_price_novat,
+            total_value_novat,
+            tax_percentage,
+            tax_amount
+        FROM 
+        (SELECT 
             item_group,
             order_group,
             item_code,
@@ -205,7 +229,7 @@ def sql_process(result_data, source_data, product_data):
             item_quantity,
             item_price_novat,
             total_value_novat,
-            vat_percent,
+            tax_percentage,
             tax_amount
         FROM temp_1 t1
         UNION ALL
@@ -218,14 +242,74 @@ def sql_process(result_data, source_data, product_data):
             item_quantity,
             item_price_novat,
             total_value_novat,
-            vat_percent,
+            tax_percentage,
             tax_amount
         FROM temp_2
-        ORDER BY order_group, item_group
+        ORDER BY 
+        order_group, 
+        item_group
+        ) AS temp
         """
     result = duckdb.query(sql_query).df()
     print(result)
     return result 
+
+def excel_writer(target_folder_path: Path, data: pd.DataFrame):
+    folder_path = target_folder_path 
+    files_check = [f for f in folder_path.glob("*.xls")] 
+    file_num = len(files_check)
+    if not file_num == 1:
+        print(f"Lỗi: Phát hiện {file_num} trong thư mục {folder_path}")
+        return
+
+    target_template_file = str(files_check[0].resolve())
+
+    # Ghi dữ liệu
+    excel = win32.Dispatch("Excel.Application")
+    excel.Visible = True
+
+    wb = excel.Workbooks.Open(target_template_file)
+    ws = wb.Sheets(1)
+
+    start_row = 11
+    start_col = 1
+    end_row = start_row + len(data) - 1
+    
+    COLUMN_MAP = {
+        'item_group': 1,
+        'order_group': 2,
+        'receive_receipt': 3,
+        'buyer_code': 4,
+        'buyer_legal_name': 13,
+        'pay_method': 19,
+        'pay_status': 20,
+        'currency_code': 21,
+        'selection': 25,
+        'item_code': 27,
+        'item_name': 28,
+        'item_unit': 32,
+        'item_quantity': 33,
+        'item_price_novat': 34,
+        'total_value_novat': 35,
+        'tax_percentage': 36,
+        'tax_amount': 37
+    }   
+
+    ws.Range(
+        ws.Cells(start_row, start_col),
+        ws.Cells(10000, 40)
+    ).ClearContents()
+
+    for col, col_idx in COLUMN_MAP.items():
+        data_col = data[col]
+        data_to_write = [[None if pd.isna(val) else val] for val in data_col.tolist()]
+
+        ws.Range(
+            ws.Cells(start_row, col_idx), ws.Cells(end_row, col_idx)
+        ).Value = data_to_write
+    
+    wb.Save()
+    del excel
 
 
 BASE_PATH = Path().cwd()
@@ -241,7 +325,7 @@ def main():
     )
     
     product_data = process_product_data(DATA_FOLDER_PATH / "product_data" / "Thông tin sản phẩm.xlsx")
-    result = sql_process(result_data, source_data, product_data)
-    result.to_excel("result.xlsx", index = False)
+    result_data = sql_process(result_data, source_data, product_data)
+    excel_writer(DATA_FOLDER_PATH / "invoice_template", result_data)
 
 main()
