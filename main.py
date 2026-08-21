@@ -174,8 +174,8 @@ def sql_process(result_data, source_data, product_data):
                 NULL AS item_quantity,
                 tax_amount AS item_price_novat,
                 vat_percent,
-                tax_amount,
-                tax_amount AS total_value_novat,
+                SUM(tax_amount) AS tax_amount,
+                SUM(tax_amount) AS total_value_novat,
             FROM (
             SELECT
                 t1.item_group,
@@ -186,6 +186,11 @@ def sql_process(result_data, source_data, product_data):
             FROM temp_1 t1
             LEFT JOIN source_data sd ON t1.order_id = sd.order_id
             AND t1.sku_id = sd.sku_id) AS sub_query
+            GROUP BY
+                item_group,
+                stt,
+                vat_percent,
+                tax_amount
         )
         SELECT 
             item_group,
