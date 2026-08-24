@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import pandas as pd
 import duckdb
@@ -42,7 +43,6 @@ def process_result_data(df: pd.DataFrame):
         df[col] = df[col].str.strip()
 
     df = df.ffill()
-    print(df)
     return df
 
 def process_source_data(df: pd.DataFrame):
@@ -144,31 +144,36 @@ def check_missing_product(base_path, product_data, result_data):
     product_data = product_data
     result_data = result_data
     sql_query = """
-    WITH product AS (
-        SELECT DISTINCT
-        item_code
-        FROM product_data
-    ),
-    result AS (
-        SELECT DISTINCT
-        item_code,
-        item_name
-        FROM result_data
-    )
-    SELECT 
-    r.item_code,
-    r.item_name
-    FROM result r 
-    LEFT JOIN product p ON r.item_code = p.item_code
-    WHERE p.item_code IS NULL AND r.item_code IS NOT NULL
-    """
+        WITH product AS (
+            SELECT DISTINCT
+            item_code,
+            item_name
+            FROM product_data
+        ),
+        result AS (
+            SELECT DISTINCT
+            item_code,
+            item_name
+            FROM result_data
+        )
+        SELECT 
+        r.item_code,
+        r.item_name
+        FROM result r 
+        LEFT JOIN product p ON r.item_code = p.item_code
+        WHERE p.item_code IS NULL AND r.item_code IS NOT NULL
+        """
     df = duckdb.query(sql_query).df()
-    print(df)
+
     if not len(df) == 0:
+        has_error = True
         print(f"Có {len(df)} sản phẩm thiếu")
+
+        error_file_path = Path(base_path / "Sản phẩm thiếu.xlsx").resolve()
+        df.to_excel(error_file_path, index=False)
+        os.startfile(error_file_path)
         return has_error
 
-    df.to_excel(base_path / "Sản phẩm thiếu.xlsx", index=False)
     return has_error
 
 def sql_process(result_data, source_data, product_data):
@@ -382,17 +387,16 @@ def main():
     )
     
     product_data = process_product_data(DATA_FOLDER_PATH / "product_data" / "Thông tin sản phẩm.xlsx")
-    result_data = sql_process(result_data, source_data, product_data)
     
     missing_product = check_missing_product(BASE_PATH, product_data, result_data)
     if missing_product:
        return 
 
-    if result_data.empty:
+    invoice_data = sql_process(result_data, source_data, product_data)
+    if invoice_data.empty:
         print("Không có dữ liệu kết quả")
         return
-
-    excel_writer(DATA_FOLDER_PATH / "invoice_template", result_data)
+    excel_writer(DATA_FOLDER_PATH / "invoice_template", invoice_data)
 
 main()
 input("Nhấn Enter để thoát...")
