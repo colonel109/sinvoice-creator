@@ -244,7 +244,7 @@ def sql_process(result_data, source_data, product_data):
             item_group,
             order_group,
             1 AS receive_receipt,
-            '11204625' AS buyer_code,
+            '11204265' AS buyer_code,
             'Bán cho người tiêu dùng' AS buyer_legal_name,
             'TM/CK' AS pay_method,
             2 AS pay_status,
