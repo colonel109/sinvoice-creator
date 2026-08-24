@@ -168,7 +168,7 @@ def check_missing_product(base_path, product_data, result_data):
         print(f"Có {len(df)} sản phẩm thiếu")
         return has_error
 
-    df.to_excel(base_path / "Sản phẩm thiếu.xlsx")
+    df.to_excel(base_path / "Sản phẩm thiếu.xlsx", index=False)
     return has_error
 
 def sql_process(result_data, source_data, product_data):

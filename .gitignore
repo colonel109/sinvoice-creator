@@ -12,5 +12,8 @@ wheels/
 
 ecom_processed_data/
 invoice_template/
+sinvoice-creator/
 
 /*.xlsx
+
+*.rar
