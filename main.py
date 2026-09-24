@@ -396,6 +396,7 @@ def main():
     if invoice_data.empty:
         print("Không có dữ liệu kết quả")
         return
+
     excel_writer(DATA_FOLDER_PATH / "invoice_template", invoice_data)
 
 main()
