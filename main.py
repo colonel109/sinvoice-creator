@@ -324,23 +324,23 @@ def excel_writer(target_folder_path: Path, data: pd.DataFrame):
         'receive_receipt': 3,
         'buyer_code': 4,
         'buyer_legal_name': 13,
-        'pay_method': 19,
-        'pay_status': 20,
-        'currency_code': 21,
-        'selection': 25,
-        'item_code': 27,
-        'item_name': 28,
-        'item_unit': 32,
-        'item_quantity': 33,
-        'item_price_novat': 34,
-        'total_value_novat': 35,
-        'tax_percentage': 36,
-        'tax_amount': 37
+        'pay_method': 26,
+        'pay_status': 27,
+        'currency_code': 28,
+        'selection': 32,
+        'item_code': 34,
+        'item_name': 35,
+        'item_unit': 39,
+        'item_quantity': 40,
+        'item_price_novat': 41,
+        'total_value_novat': 42,
+        'tax_percentage': 43,
+        'tax_amount': 44
     }   
 
     ws.Range(
         ws.Cells(start_row, start_col),
-        ws.Cells(10000, 40)
+        ws.Cells(10000, 46)
     ).ClearContents()
 
     print("Chuẩn bị ghi dữ liệu:")
